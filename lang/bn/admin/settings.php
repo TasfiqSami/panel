@@ -75,7 +75,7 @@ return [
         'disabled' => 'নিষ্ক্রিয়',
         'key-label' => 'সাইট কী',
         'secret-label' => 'সিক্রেট কী',
-        'recaptcha-alert' => 'আপনি বর্তমানে এই প্যানেলের সাথে দেওয়া reCAPTCHA key ব্যবহার করছেন। উন্নত নিরাপত্তার জন্য আপনার ওয়েবসাইটের জন্য নতুন invisible reCAPTCHA key তৈরি করার পরামর্শ দেওয়া হচ্ছে।',
+        'recaptcha-alert' => 'আপনি বর্তমানে এই প্যানেলের সাথে দেওয়া reCAPTCHA key ব্যবহার করছেন। উন্নত নিরাপত্তার জন্য আপনার ওয়েবসাইটের জন্য :a নতুন invisible reCAPTCHA key তৈরি করার :aclose পরামর্শ দেওয়া হচ্ছে।',
         'http-label' => 'HTTP সংযোগ',
         'timeout-label' => 'সংযোগ টাইমআউট',
         'request-label' => 'রেকুয়েস্ট টাইমআউট',
