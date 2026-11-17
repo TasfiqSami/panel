@@ -6,7 +6,9 @@ use App\Contracts\Repository\SettingsRepositoryInterface;
 use App\Filament\AdminAccess;
 use App\Filament\Components\Alert;
 use App\Filament\Components\ImageInput;
+use App\Filament\Components\SiteImageInput;
 use App\Services\Acl\RolePermission;
+use App\Services\Designify\SiteImageService;
 use App\Traits\Helpers\AvailableLanguages;
 use Filament\Actions\Action;
 use Filament\Forms\Components\ColorPicker;
@@ -20,9 +22,12 @@ use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Notifications\Notification;
 use Filament\Pages\Concerns\InteractsWithHeaderActions;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Contracts\HasSchemas;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Console\Kernel;
@@ -30,6 +35,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class Designify extends Page implements HasSchemas
 {
@@ -51,6 +57,10 @@ class Designify extends Page implements HasSchemas
     protected string $view = 'filament.pages.designify';
 
     public ?array $data = [];
+
+    public array $siteImageFiles = [];
+
+    public bool $hasSelectedBackgroundIcon = false;
 
     protected array $settingKeys = [
         'designify:customCopyright',
@@ -86,6 +96,10 @@ class Designify extends Page implements HasSchemas
         'designify:sidebarLogout',
         'designify:sidebarButtons',
         'designify:background',
+        'designify:backgroundScope',
+        'designify:backgroundOverlay',
+        'designify:backgroundOverlayOpacity',
+        'designify:backgroundOverlayColor',
         'designify:radius',
         'designify:allocationBlur',
         'designify:fontFamily',
@@ -96,6 +110,8 @@ class Designify extends Page implements HasSchemas
         'designify:site_favicon',
         'designify:alwaysShowKillButton',
         'designify:cardType',
+        'designify:cardIconStyle',
+        'designify:cardIconSize',
         'designify:fileLayout',
         'designify:serverOrganization',
         'designify:layoutType',
@@ -173,6 +189,8 @@ class Designify extends Page implements HasSchemas
         if ($form !== null) {
             $form->fill($formData);
         }
+
+        $this->hasSelectedBackgroundIcon = ($formData['designify:cardIconStyle'] ?? 'classic') === 'background';
     }
 
     protected function getFormSchema(): array
@@ -371,12 +389,53 @@ class Designify extends Page implements HasSchemas
                         ->label(trans('admin/settings.designify.sidebar-logout-button'))
                         ->inline(false)
                         ->columnSpan(1),
-
-                    TextInput::make('designify:background')
+                ]),
+            Section::make(trans('admin/settings.designify.background-settings'))
+                ->icon('tabler-photo')
+                ->columns(2)
+                ->schema([
+                    SiteImageInput::make('designify:background')
                         ->label(trans('admin/settings.designify.panel-background'))
                         ->helperText(trans('admin/settings.designify.panel-background-helper'))
                         ->maxLength(255)
                         ->columnSpanFull(),
+
+                    Select::make('designify:backgroundScope')
+                        ->label(trans('admin/settings.designify.background-scope'))
+                        ->options([
+                            'page' => trans('admin/settings.designify.background-scope-page'),
+                            'all' => trans('admin/settings.designify.background-scope-all'),
+                        ])
+                        ->helperText(trans('admin/settings.designify.background-scope-helper'))
+                        ->required()
+                        ->columnSpanFull(),
+
+                    Toggle::make('designify:backgroundOverlay')
+                        ->label(trans('admin/settings.designify.background-overlay'))
+                        ->helperText(trans('admin/settings.designify.background-overlay-helper'))
+                        ->inline(false)
+                        ->live()
+                        ->columnSpanFull(),
+
+                    TextInput::make('designify:backgroundOverlayOpacity')
+                        ->label(trans('admin/settings.designify.background-overlay-opacity'))
+                        ->numeric()
+                        ->integer()
+                        ->minValue(0)
+                        ->maxValue(100)
+                        ->suffix('%')
+                        ->required()
+                        ->visible(fn (Get $get): bool => (bool) $get('designify:backgroundOverlay'))
+                        ->dehydratedWhenHidden(),
+
+                    ColorPicker::make('designify:backgroundOverlayColor')
+                        ->label(trans('admin/settings.designify.background-overlay-color'))
+                        ->placeholder(trans('admin/settings.designify.background-overlay-theme'))
+                        ->helperText(trans('admin/settings.designify.background-overlay-color-helper'))
+                        ->regex('/^#[0-9a-fA-F]{6}$/')
+                        ->nullable()
+                        ->visible(fn (Get $get): bool => (bool) $get('designify:backgroundOverlay'))
+                        ->dehydratedWhenHidden(),
                 ]),
             Section::make(trans('admin/settings.designify.section-surface'))
                 ->description(trans('admin/settings.designify.section-surface-description'))
@@ -431,6 +490,7 @@ class Designify extends Page implements HasSchemas
                         ->columnSpanFull(),
                     ToggleButtons::make('designify:cardType')
                         ->label(trans('admin/settings.designify.server-card-layout'))
+                        ->live()
                         ->inline()
                         ->icons([
                             'grid' => 'tabler-layout-grid',
@@ -442,6 +502,37 @@ class Designify extends Page implements HasSchemas
                         ])
                         ->required()
                         ->columnSpanFull(),
+                    Grid::make(1)
+                        ->dehydratedWhenHidden()
+                        ->visible(fn (Get $get): bool => $get('designify:cardType') === 'grid')
+                        ->schema([
+                            ToggleButtons::make('designify:cardIconStyle')
+                                ->dehydratedWhenHidden()
+                                ->label(trans('admin/settings.designify.card-icon-style'))
+                                ->live()
+                                ->afterStateUpdated(function (?string $state, Set $set): void {
+                                    if ($state === 'background' && ! $this->hasSelectedBackgroundIcon) {
+                                        $set('designify:cardIconSize', 'standard');
+                                        $this->hasSelectedBackgroundIcon = true;
+                                    }
+                                })
+                                ->inline()
+                                ->options([
+                                    'classic' => trans('admin/settings.designify.card-icon-classic'),
+                                    'background' => trans('admin/settings.designify.card-icon-background'),
+                                ])
+                                ->required(),
+                            ToggleButtons::make('designify:cardIconSize')
+                                ->dehydratedWhenHidden()
+                                ->label(trans('admin/settings.designify.card-icon-size'))
+                                ->inline()
+                                ->options([
+                                    'standard' => trans('admin/settings.designify.card-icon-centered'),
+                                    'enlarged' => trans('admin/settings.designify.card-icon-enlarged'),
+                                ])
+                                ->visible(fn (Get $get): bool => $get('designify:cardIconStyle') === 'background')
+                                ->required(),
+                        ]),
                     ToggleButtons::make('designify:fileLayout')
                         ->label(trans('admin/settings.designify.file-layout'))
                         ->inline()
@@ -505,13 +596,13 @@ class Designify extends Page implements HasSchemas
                         ->required()
                         ->columnSpan(1),
 
-                    ImageInput::make('designify:site_image')
+                    SiteImageInput::make('designify:site_image')
                         ->label(trans('admin/settings.designify.site-image'))
                         ->required()
                         ->maxLength(255)
                         ->columnSpan(1),
 
-                    ImageInput::make('designify:site_favicon')
+                    SiteImageInput::make('designify:site_favicon')
                         ->label(trans('admin/settings.designify.site-favicon'))
                         ->required()
                         ->maxLength(255)
@@ -523,6 +614,25 @@ class Designify extends Page implements HasSchemas
                         ->columnSpan(1),
                 ]),
         ];
+    }
+
+    public function updatedSiteImageFiles(mixed $value, string $key): void
+    {
+        abort_unless(static::canAccess() && ! config('panel.load_environment_only'), 403);
+        abort_unless(in_array($key, ['site_image', 'site_favicon', 'background'], true), 422);
+        if (! $value instanceof TemporaryUploadedFile) {
+            return;
+        }
+
+        $attribute = 'siteImageFiles.'.$key;
+        $this->resetValidation($attribute);
+        $this->data['designify:'.$key] = app(SiteImageService::class)->store(
+            $value,
+            $attribute,
+            trans('admin/settings.designify.'.($key === 'background' ? 'panel-background' : str_replace('_', '-', $key))),
+        );
+        unset($this->siteImageFiles[$key]);
+        $this->updatedData();
     }
 
     private function errorSettings(): array
@@ -653,6 +763,10 @@ class Designify extends Page implements HasSchemas
                 continue;
             }
 
+            if (in_array($key, ['designify:site_image', 'designify:site_favicon'], true)) {
+                $value = SiteImageService::normalizeUrl($value);
+            }
+
             Arr::set($preview, str_replace(':', '.', Str::after($key, 'designify:')), $value);
         }
 
@@ -693,7 +807,7 @@ class Designify extends Page implements HasSchemas
             ->send();
 
         $this->dispatch('$refresh');
-        $this->dispatch('designify-saved', settings: $this->getPreviewSettings());
+        $this->dispatch('designify-saved', settings: $this->getPreviewSettings(), formData: $this->data);
         $this->js("window.dispatchEvent(new CustomEvent('reload-iframe'))");
     }
 

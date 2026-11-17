@@ -39,6 +39,10 @@ return [
     'sidebarLogout' => false,
     'sidebarButtons' => '[]',
     'background' => 'none',
+    'backgroundScope' => 'page',
+    'backgroundOverlay' => true,
+    'backgroundOverlayOpacity' => 85,
+    'backgroundOverlayColor' => '',
     'radius' => '15px',
     'allocationBlur' => true,
     'fontFamily' => 'Poppins',
@@ -76,6 +80,8 @@ return [
     'alwaysShowKillButton' => false,
 
     'cardType' => 'grid',
+    'cardIconStyle' => 'classic',
+    'cardIconSize' => 'standard',
     'fileLayout' => 'list',
     'serverOrganization' => 'categories',
 

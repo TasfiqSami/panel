@@ -2,6 +2,7 @@
 
 namespace App\Http\ViewComposers;
 
+use App\Services\Designify\SiteImageService;
 use Illuminate\View\View;
 
 class DesignifyComposer
@@ -45,14 +46,18 @@ class DesignifyComposer
             'sidebarLogout' => config('designify.sidebarLogout', false),
             'sidebarButtons' => $this->getSidebarButtonsConfig(),
             'background' => config('designify.background') ?? 'none',
+            'backgroundScope' => config('designify.backgroundScope') === 'all' ? 'all' : 'page',
+            'backgroundOverlay' => (bool) config('designify.backgroundOverlay', true),
+            'backgroundOverlayOpacity' => max(0, min(100, (int) config('designify.backgroundOverlayOpacity', 85))),
+            'backgroundOverlayColor' => preg_match('/^#[0-9a-fA-F]{6}$/', config('designify.backgroundOverlayColor') ?? '') ? config('designify.backgroundOverlayColor') : '',
             'radius' => config('designify.radius') ?? '15px',
             'allocationBlur' => config('designify.allocationBlur', true),
             'fontFamily' => config('designify.fontFamily') ?? 'Poppins',
             'site_color' => config('designify.site_color') ?? '#3b82f6',
             'site_title' => config('designify.site_title') ?? 'Reviactyl',
             'site_description' => config('designify.site_description') ?? 'Our official control panel made better with Reviactyl.',
-            'site_image' => config('designify.site_image') ?? '/reviactyl/logo.png',
-            'site_favicon' => config('designify.site_favicon') ?? '/reviactyl/icon.png',
+            'site_image' => SiteImageService::normalizeUrl(config('designify.site_image') ?? '/reviactyl/logo.png'),
+            'site_favicon' => SiteImageService::normalizeUrl(config('designify.site_favicon') ?? '/reviactyl/icon.png'),
             'errors' => [
                 '403' => [
                     'title' => config('designify.errors.403.title') ?? 'Access Forbidden',
@@ -78,6 +83,8 @@ class DesignifyComposer
             ],
             'alwaysShowKillButton' => config('designify.alwaysShowKillButton', false),
             'cardType' => config('designify.cardType') ?? 'grid',
+            'cardIconStyle' => config('designify.cardIconStyle') ?? 'classic',
+            'cardIconSize' => config('designify.cardIconSize') ?? 'standard',
             'fileLayout' => config('designify.fileLayout') ?? 'list',
             'serverOrganization' => config('designify.serverOrganization') ?? 'categories',
             'layoutType' => config('designify.layoutType') ?? 'modern',

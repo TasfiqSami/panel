@@ -78,6 +78,7 @@ export default ({
                         <div className={'fixed inset-0 overflow-y-auto z-50'}>
                             <div
                                 ref={container}
+                                data-wallpaper-backdrop
                                 className={styles.container}
                                 onMouseDown={onContainerClick.bind(this, true)}
                                 onMouseUp={onContainerClick.bind(this, false)}
@@ -118,7 +119,7 @@ export default ({
                                     {footer}
                                     {/* Keep this below the other buttons so that it isn't the default focus if they're present. */}
                                     {!hideCloseIcon && (
-                                        <div className={'absolute right-0 top-0 m-4'}>
+                                        <div className={'absolute end-0 top-0 m-4'}>
                                             <Button.Text
                                                 size={Button.Sizes.Small}
                                                 shape={Button.Shapes.IconSquare}

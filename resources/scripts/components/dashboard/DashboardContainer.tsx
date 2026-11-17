@@ -36,8 +36,32 @@ import { ServerCategory } from '@/api/account/getServerCategories';
 import FolderFormModal from './FolderFormModal';
 import DeleteFolderModal from './DeleteFolderModal';
 import { folderTree, folderPath } from './folderTree';
+import { ServerResourcesContext } from '@/context/ServerResourcesContext';
 
-export default () => {
+const DashboardHeader = ({
+    title,
+    subtitle,
+    children,
+}: React.PropsWithChildren<{ title: string; subtitle: string }>) => {
+    const modernHeaders = useModernHeaders();
+    return modernHeaders ? (
+        <PageHeader title={title} className='relative z-20'>
+            {children}
+        </PageHeader>
+    ) : (
+        <div className='relative z-20 flex flex-col gap-4 py-4 md:flex-row md:items-center justify-between'>
+            <div className='min-w-0'>
+                <Title as='h1' className='text-4xl font-bold!'>
+                    {title}
+                </Title>
+                <p className='text-sm text-gray-200/80 hidden lg:block'>{subtitle}</p>
+            </div>
+            {children}
+        </div>
+    );
+};
+
+const DashboardContainer = () => {
     const modernHeaders = useModernHeaders();
     const { mutate: mutateCache } = useSWRConfig();
     const { t } = useTranslation('dashboard/index');
@@ -267,7 +291,7 @@ export default () => {
                                             title={t('categories.manage')}
                                             aria-label={t('categories.manage')}
                                         >
-                                            <FaUserGear className='w-5 h-5 text-gray-50' />
+                                            <FaUserGear className='w-5 h-5' />
                                         </Button.Text>
                                     </div>
                                 )}
@@ -280,13 +304,13 @@ export default () => {
                                             className={clsx(
                                                 'p-2!',
                                                 (selectedEggId !== null || selectedCategory !== 'all') &&
-                                                    'bg-blue-700 hover:bg-blue-600',
+                                                    'bg-reviactyl! text-on-primary!',
                                             )}
                                             title={t('filter-label')}
                                             aria-label={t('filter-label')}
                                             aria-expanded={eggFilterOpen}
                                         >
-                                            <FilterIcon className='w-5 h-5 text-gray-50' />
+                                            <FilterIcon className='w-5 h-5' />
                                         </Button.Text>
                                     )}
 
@@ -514,25 +538,14 @@ export default () => {
     );
 };
 
-const DashboardHeader = ({
-    title,
-    subtitle,
-    children,
-}: React.PropsWithChildren<{ title: string; subtitle: string }>) => {
-    const modernHeaders = useModernHeaders();
-    return modernHeaders ? (
-        <PageHeader title={title} className='relative z-20'>
-            {children}
-        </PageHeader>
-    ) : (
-        <div className='relative z-20 flex flex-col gap-4 py-4 md:flex-row md:items-center justify-between'>
-            <div className='min-w-0'>
-                <Title as='h1' className='text-4xl font-bold!'>
-                    {title}
-                </Title>
-                <p className='text-sm text-gray-200/80 hidden lg:block'>{subtitle}</p>
-            </div>
-            {children}
-        </div>
+export default () => {
+    const uuid = useStoreState((state) => state.user.data!.uuid);
+    const { session } = useSubuserPreview();
+    const resourceCache = useMemo(() => new Map(), [uuid, session?.uuid]);
+
+    return (
+        <ServerResourcesContext.Provider value={resourceCache}>
+            <DashboardContainer />
+        </ServerResourcesContext.Provider>
     );
 };

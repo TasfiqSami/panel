@@ -135,10 +135,10 @@ const AllocationRow = ({ allocation }: Props) => {
     return (
         <GreyRowBox $hoverable={false} className={'flex-wrap md:flex-nowrap mt-2'}>
             <div className={'flex items-center w-full md:w-auto'}>
-                <div className={'pl-4 pr-6 text-gray-400'}>
+                <div className={'ps-4 pe-6 text-gray-400'}>
                     <FaNetworkWired />
                 </div>
-                <div className={'mr-4 flex-1'}>
+                <div className={'me-4 flex-1'}>
                     {allocation.alias ? (
                         <CopyOnClick text={allocation.alias}>
                             <Code>{allocation.alias}</Code>
@@ -179,7 +179,7 @@ const AllocationRow = ({ allocation }: Props) => {
             </div>
             <div className={'flex justify-end space-x-4 mt-4 w-full md:mt-0 md:w-48'}>
                 {allocation.isDefault ? (
-                    <Button size={Button.Sizes.Small} className={'text-gray-50! bg-blue-600!'} disabled>
+                    <Button size={Button.Sizes.Small} disabled>
                         Primary
                     </Button>
                 ) : (

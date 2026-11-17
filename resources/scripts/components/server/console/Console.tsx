@@ -172,7 +172,7 @@ export default () => {
         const foreground = color('--color-100');
         if (terminalRef.current) {
             terminalRef.current.options.theme = {
-                background: color('--color-900'),
+                background: color('--color-950'),
                 foreground,
                 cursor: foreground,
                 selectionBackground: color('--color-primary'),
@@ -236,7 +236,7 @@ export default () => {
     }, [connected, instance]);
 
     return (
-        <div className={classNames(styles.terminal, 'relative')}>
+        <div dir='ltr' className={classNames(styles.terminal, 'relative')}>
             <SpinnerOverlay visible={!connected} size={'large'} />
             <div
                 className={classNames(styles.container, styles.overflows_container, {

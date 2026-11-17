@@ -57,6 +57,7 @@ class Settings extends Page implements HasSchemas
         'app:logo',
         'app:icon',
         'app:locale',
+        'app:fileEditor',
         'app:locale:geolocate',
         'trustedproxy:proxies',
         'panel:auth:2fa_required',
@@ -260,6 +261,17 @@ class Settings extends Page implements HasSchemas
                         ->columnSpan(2)
                         ->native(false),
 
+                    Select::make('app:fileEditor')
+                        ->label(trans('admin/settings.overview.default-code-editor'))
+                        ->options([
+                            'mo' => 'Monaco',
+                            'cm' => 'CodeMirror',
+                        ])
+                        ->required()
+                        ->searchable()
+                        ->columnSpan(2)
+                        ->native(false),
+
                     Toggle::make('app:locale:geolocate')
                         ->label(trans('admin/settings.overview.geolocate-language'))
                         ->helperText(trans('admin/settings.overview.geolocate-language-hint'))
@@ -273,6 +285,24 @@ class Settings extends Page implements HasSchemas
                     Toggle::make('panel:auth:passkey_login_requires_username')
                         ->label(trans('admin/settings.security.passkey-require-username'))
                         ->helperText(trans('admin/settings.security.passkey-require-username-hint'))
+                        ->inline(false)
+                        ->onIcon('tabler-check')
+                        ->offIcon('tabler-x')
+                        ->onColor('success')
+                        ->offColor('danger')
+                        ->columnSpan(1),
+
+                    Toggle::make('app:debug')
+                        ->label(trans('admin/settings.overview.debug-mode'))
+                        ->inline(false)
+                        ->onIcon('tabler-check')
+                        ->offIcon('tabler-x')
+                        ->onColor('success')
+                        ->offColor('danger')
+                        ->columnSpan(1),
+
+                    Toggle::make('app:pwa')
+                        ->label(trans('admin/settings.overview.pwa'))
                         ->inline(false)
                         ->onIcon('tabler-check')
                         ->offIcon('tabler-x')
@@ -300,28 +330,6 @@ class Settings extends Page implements HasSchemas
                         ->required()
                         ->columnSpan(2),
 
-                    Toggle::make('app:debug')
-                        ->label(trans('admin/settings.overview.debug-mode'))
-                        ->inline(false)
-                        ->onIcon('tabler-check')
-                        ->offIcon('tabler-x')
-                        ->onColor('success')
-                        ->offColor('danger')
-                        ->columnSpan(1),
-
-                    Toggle::make('app:pwa')
-                        ->label(trans('admin/settings.overview.pwa'))
-                        ->inline(false)
-                        ->onIcon('tabler-check')
-                        ->offIcon('tabler-x')
-                        ->onColor('success')
-                        ->offColor('danger')
-                        ->columnSpan(1),
-                ]),
-
-            Group::make()
-                ->columns(4)
-                ->schema([
                     TagsInput::make('trustedproxy:proxies')
                         ->label(trans('admin/settings.overview.trusted-proxies'))
                         ->helperText(trans('admin/settings.overview.trusted-proxies-hint'))
