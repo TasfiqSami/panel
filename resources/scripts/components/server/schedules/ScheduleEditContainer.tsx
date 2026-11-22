@@ -15,20 +15,11 @@ import ScheduleTaskRow from '@/components/server/schedules/ScheduleTaskRow';
 import isEqual from 'react-fast-compare';
 import { formatInTimezone } from '@/lib/timezones';
 import ScheduleCronRow from '@/components/server/schedules/ScheduleCronRow';
+import ScheduleCronBoxes from '@/components/server/schedules/ScheduleCronBoxes';
 import ScheduleStatus from '@/components/server/schedules/ScheduleStatus';
 import RunScheduleButton, { RunRequestState } from '@/components/server/schedules/RunScheduleButton';
 import Card from '@/reviactyl/ui/Card';
-import { useTranslation } from 'react-i18next';
-
-const CronBox = ({ title, value }: { title: string; value: string }) => (
-    <div className='mx-2 rounded-ui bg-gray-800 p-3'>
-        <p className='text-sm text-gray-300'>{title}</p>
-        <p className='text-xl font-medium text-gray-100'>{value}</p>
-    </div>
-);
-
 const ScheduleEditContainer = () => {
-    const { t } = useTranslation('server/schedules');
     const { id: scheduleId } = useParams<'id'>();
     const navigate = useNavigate();
 
@@ -39,6 +30,7 @@ const ScheduleEditContainer = () => {
     );
 
     const { clearFlashes, clearAndAddHttpError } = useFlash();
+    const [loading, setLoading] = useState(true);
     const [showEditModal, setShowEditModal] = useState(false);
     const [requestState, setRequestState] = useState<RunRequestState>('idle');
 
@@ -55,6 +47,7 @@ const ScheduleEditContainer = () => {
         let cancelled = false;
         const cached = store.getState().schedules.data.find((s) => s.id === Number(scheduleId));
 
+        setLoading(true);
         clearFlashes('schedules');
         getServerSchedule(uuid, Number(scheduleId))
             .then((schedule) => {
@@ -66,6 +59,9 @@ const ScheduleEditContainer = () => {
                 if (cancelled) return;
                 console.error(error);
                 clearAndAddHttpError({ error, key: 'schedules' });
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
             });
 
         return () => {
@@ -82,7 +78,9 @@ const ScheduleEditContainer = () => {
             <FlashMessageRender byKey='schedules' className='mb-4' />
             <FlashMessageRender byKey='schedule-status' className='mb-4' />
             {!schedule ? (
-                <Spinner size={'large'} centered />
+                loading ? (
+                    <Spinner size={'large'} centered />
+                ) : null
             ) : (
                 <>
                     <div className='mb-4 rounded-ui bg-gray-900 p-3 sm:hidden'>
@@ -126,16 +124,10 @@ const ScheduleEditContainer = () => {
                                 </Can>
                             </div>
                         </div>
-                        <div className='mt-4 mb-4 hidden grid-cols-5 gap-4 sm:grid md:grid-cols-5'>
-                            <CronBox title={t('cron.minute')} value={schedule.cron.minute} />
-                            <CronBox title={t('cron.hour')} value={schedule.cron.hour} />
-                            <CronBox title={t('cron.day-month')} value={schedule.cron.dayOfMonth} />
-                            <CronBox title={t('cron.month')} value={schedule.cron.month} />
-                            <CronBox title={t('cron.day-week')} value={schedule.cron.dayOfWeek} />
-                        </div>
+                        <ScheduleCronBoxes cron={schedule.cron} />
                         <div className='rounded-b bg-gray-900'>
                             {schedule.tasks.length > 0
-                                ? schedule.tasks
+                                ? [...schedule.tasks]
                                       .sort((a, b) =>
                                           a.sequenceId === b.sequenceId ? 0 : a.sequenceId > b.sequenceId ? 1 : -1,
                                       )

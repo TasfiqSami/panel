@@ -15,7 +15,8 @@ import InstallListener from '@/components/server/InstallListener';
 import ErrorBoundary from '@/reviactyl/elements/ErrorBoundary';
 import ConflictStateRenderer from '@/components/server/ConflictStateRenderer';
 import PermissionRoute from '@/reviactyl/elements/PermissionRoute';
-import routes from '@/routers/routes';
+import routes, { loadScreenNamespaces } from '@/routers/routes';
+import warmRoutes from '@/routers/warmRoutes';
 import { Sidebar, Navbar } from '@/reviactyl/components/Layout';
 import { XIcon, MenuIcon, ExternalLinkIcon } from '@heroicons/react/solid';
 import { RouterContainer } from '@/reviactyl/ui/RouterContainer';
@@ -270,6 +271,16 @@ export default function ServerRouter() {
 
     const allRoutes = [...routes.server.control, ...routes.server.management, ...routes.server.administration];
 
+    useEffect(
+        () =>
+            warmRoutes([
+                () => loadScreenNamespaces(allRoutes),
+                ...allRoutes.map((route) => route.component.preload),
+                () => import('@/routers/loadRouter').then((routers) => routers.loadDashboardRouter()),
+            ]),
+        [],
+    );
+
     useEffect(() => {
         const pathname = location.pathname.replace(/^\/server\/[^/]+/, '') || '/';
         const matches = matchRoutes(
@@ -319,7 +330,7 @@ export default function ServerRouter() {
                             <div
                                 onClick={() => setSidebarOpen(false)}
                                 data-wallpaper-backdrop
-                                className='fixed inset-0 z-30 bg-gray-900/40 backdrop-blur-xs lg:hidden'
+                                className='fixed inset-0 z-30 bg-scrim/40 backdrop-blur-xs lg:hidden'
                             />
                         )}
 

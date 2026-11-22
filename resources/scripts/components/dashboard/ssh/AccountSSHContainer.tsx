@@ -11,18 +11,28 @@ import { format } from 'date-fns';
 import CreateSSHKeyForm from '@/components/dashboard/ssh/CreateSSHKeyForm';
 import DeleteSSHKeyButton from '@/components/dashboard/ssh/DeleteSSHKeyButton';
 import { useTranslation } from 'react-i18next';
+import Button from '@/reviactyl/elements/Button';
+import { httpErrorToHuman } from '@/api/http';
 
 export default () => {
     const { t } = useTranslation('dashboard/account');
-    const { clearAndAddHttpError } = useFlashKey('account');
-    const { data, isValidating, error } = useSSHKeys({
+    const { clearFlashes: clearListError, addError: addListError } = useFlashKey('ssh-key-list');
+    const { data, error, isValidating, mutate } = useSSHKeys({
         revalidateOnMount: true,
         revalidateOnFocus: false,
     });
+    const loadFailed = Boolean(error);
 
     useEffect(() => {
-        clearAndAddHttpError(error);
+        clearListError();
+        if (error) {
+            addListError(httpErrorToHuman(error));
+        }
     }, [error]);
+
+    const retry = () => {
+        void mutate().catch(() => undefined);
+    };
 
     return (
         <AccountContentBlock title={t('ssh.title')}>
@@ -32,30 +42,36 @@ export default () => {
                     <CreateSSHKeyForm />
                 </ContentBox>
                 <ContentBox insetTitle title={t('ssh.title')} className='min-w-0'>
+                    <FlashMessageRender byKey={'ssh-key-list'} />
                     <SpinnerOverlay visible={!data && isValidating} />
-                    {!data || !data.length ? (
-                        <p className='text-center text-sm'>{!data ? t('overview.loading') : t('ssh.not-exist')}</p>
-                    ) : (
-                        data.map((key, index) => (
-                            <GreyRowBox
-                                key={key.fingerprint}
-                                className={`flex space-x-4 items-center ${index > 0 ? ' mt-2' : ''}`}
-                            >
-                                <FaKey className={'text-gray-300'} />
-                                <div className='flex-1'>
-                                    <p className='text-sm wrap-break-word font-medium'>{key.name}</p>
-                                    <p className='text-xs mt-1 font-mono truncate'>
-                                        {t('ssh.fingerprint')}:{key.fingerprint}
-                                    </p>
-                                    <p className='text-xs mt-1 text-gray-300 uppercase'>
-                                        {t('ssh.added-on')}:&nbsp;
-                                        {format(key.createdAt, 'MMM do, yyyy HH:mm')}
-                                    </p>
-                                </div>
-                                <DeleteSSHKeyButton name={key.name} fingerprint={key.fingerprint} />
-                            </GreyRowBox>
-                        ))
+                    {loadFailed && (
+                        <div className='text-center'>
+                            <Button type='button' disabled={isValidating} onClick={retry}>
+                                {t('api.retry')}
+                            </Button>
+                        </div>
                     )}
+                    {!data && !loadFailed && <p className='text-center text-sm'>{t('overview.loading')}</p>}
+                    {data?.length === 0 && !loadFailed && <p className='text-center text-sm'>{t('ssh.not-exist')}</p>}
+                    {data?.map((key, index) => (
+                        <GreyRowBox
+                            key={key.fingerprint}
+                            className={`flex space-x-4 items-center ${index > 0 ? ' mt-2' : ''}`}
+                        >
+                            <FaKey className={'shrink-0 text-gray-300'} />
+                            <div className='min-w-0 flex-1'>
+                                <p className='text-sm wrap-break-word font-medium'>{key.name}</p>
+                                <p className='text-xs mt-1 font-mono truncate' title={key.fingerprint}>
+                                    {t('ssh.fingerprint')}: {key.fingerprint}
+                                </p>
+                                <p className='text-xs mt-1 text-gray-300 uppercase'>
+                                    {t('ssh.added-on')}:&nbsp;
+                                    {format(key.createdAt, 'MMM do, yyyy HH:mm')}
+                                </p>
+                            </div>
+                            <DeleteSSHKeyButton name={key.name} fingerprint={key.fingerprint} />
+                        </GreyRowBox>
+                    ))}
                 </ContentBox>
             </div>
         </AccountContentBlock>

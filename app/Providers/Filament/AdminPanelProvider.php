@@ -36,7 +36,7 @@ class AdminPanelProvider extends PanelProvider
             ->homeUrl('/admin')
             ->brandLogo(config('app.logo', '/reviactyl/logo.png'))
             ->brandLogoHeight('3rem')
-            ->favicon(config('app.favicon', '/favicons/favicon.ico'))
+            ->favicon(fn () => config('app.icon') ?? '/favicons/favicon.ico')
             ->font('Poppins')
             ->colors([
                 'primary' => Color::Blue,
@@ -49,7 +49,12 @@ class AdminPanelProvider extends PanelProvider
             ->breadcrumbs(false)
             ->renderHook(
                 PanelsRenderHook::BODY_END,
-                fn () => Blade::render('@vite("resources/scripts/admin/filePicker.ts")'),
+                fn () => Blade::render('
+                    @vite("resources/scripts/admin/filePicker.ts")
+                    @if (! config("panel.disable_support_popups") && request()->user())
+                        @include("filament.components.support-modal")
+                    @endif
+                '),
             )
             ->navigationGroups([
                 NavigationGroup::make(fn () => trans('admin/navigation.administration.title'))

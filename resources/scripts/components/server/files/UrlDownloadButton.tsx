@@ -43,7 +43,6 @@ const DownloadSpinner = ({ className }: { className?: string }) => (
         <circle {...svgProps} className={'opacity-25'} />
         <circle
             {...svgProps}
-            stroke={'white'}
             strokeDasharray={28 * Math.PI}
             strokeLinecap={'round'}
             style={{ strokeDashoffset: 28 * Math.PI * 0.25 }}
@@ -136,7 +135,7 @@ export default ({ className }: WithClassname & { compact?: boolean }) => {
                 </Tooltip>
             )}
             <Dialog open={open} onClose={() => setOpen(false)} title={t('url-download.button')}>
-                <FlashMessageRender key={'files:url-download-modal'} />
+                <FlashMessageRender byKey={'files:url-download-modal'} />
                 <Formik
                     onSubmit={submit}
                     validationSchema={urlSchema}

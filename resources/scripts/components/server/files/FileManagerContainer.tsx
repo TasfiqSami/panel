@@ -25,8 +25,7 @@ import style from './style.module.css';
 import { SearchIcon, FolderOpenIcon } from '@heroicons/react/solid';
 import Card from '@/reviactyl/ui/Card';
 import { useTranslation } from 'react-i18next';
-import ImageViewerModal from '@/components/server/files/ImageViewerModal';
-import VideoViewerModal from '@/components/server/files/VideoViewerModal';
+import { ImageViewerModal, VideoViewerModal } from '@/components/server/files/mediaViewers';
 import { isVideoFile } from '@/api/server/files/isVideoFile';
 import getFileDownloadUrl from '@/api/server/files/getFileDownloadUrl';
 import { join } from 'pathe';
@@ -34,17 +33,11 @@ import RecursiveFileRow, { SearchResult } from '@/components/server/files/Recurs
 import Tooltip from '@/reviactyl/elements/tooltip/Tooltip';
 import { ExtensionSlot } from '@/extensions/ExtensionSlot';
 import Input from '@/reviactyl/elements/Input';
-import {
-    FaArrowDown19,
-    FaArrowDownAZ,
-    FaArrowDownShortWide,
-    FaArrowUp19,
-    FaArrowUpAZ,
-    FaArrowUpShortWide,
-    FaFileCirclePlus,
-} from 'react-icons/fa6';
+import { FaFileCirclePlus } from 'react-icons/fa6';
+import FileSortIcon from './FileSortIcon';
 import { Button } from '@/reviactyl/components/button';
 import { sortFiles, SortDirection, SortType } from '@/components/server/files/sortFiles';
+import useFlash from '@/plugins/useFlash';
 
 export default () => {
     const { t } = useTranslation(['server/files', 'strings', 'server/recycle']);
@@ -56,6 +49,7 @@ export default () => {
     const { data: files, error, mutate } = useFileManagerSwr();
     const directory = ServerContext.useStoreState((state) => state.files.directory);
     const clearFlashes = useStoreActions((actions) => actions.flashes.clearFlashes);
+    const { clearAndAddHttpError } = useFlash();
     const setDirectory = ServerContext.useStoreActions((actions) => actions.files.setDirectory);
 
     const setSelectedFiles = ServerContext.useStoreActions((actions) => actions.files.setSelectedFiles);
@@ -65,7 +59,7 @@ export default () => {
     const [imageViewerVisible, setImageViewerVisible] = useState(false);
     const [selectedImage, setSelectedImage] = useState<{ url: string; name: string } | null>(null);
     const [videoViewerVisible, setVideoViewerVisible] = useState(false);
-    const [selectedVideo, setSelectedVideo] = useState<{ url: string; name: string } | null>(null);
+    const [selectedVideo, setSelectedVideo] = useState<{ url: string; name: string; mimetype: string } | null>(null);
 
     const [sortType, setSortType] = useState<SortType>('size');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -142,7 +136,7 @@ export default () => {
                     const { dir, dirFiles } = result.value;
                     for (const f of dirFiles ?? []) {
                         const fp = `${dir === '/' ? '' : dir}/${f.name}`.replace(/\/+/g, '/');
-                        if (!f.isFile && !seen.has(fp)) {
+                        if (!f.isFile && !f.isSymlink && !seen.has(fp)) {
                             seen.add(fp);
                             queue.push(fp);
                         }
@@ -187,7 +181,7 @@ export default () => {
             getFileDownloadUrl(uuid, filePath)
                 .then((url) => {
                     if (isVideoFile(file)) {
-                        setSelectedVideo({ url, name: file.name });
+                        setSelectedVideo({ url, name: file.name, mimetype: file.mimetype });
                         setVideoViewerVisible(true);
                     } else {
                         setSelectedImage({ url, name: file.name });
@@ -196,9 +190,10 @@ export default () => {
                 })
                 .catch((error) => {
                     console.error('Failed to get media URL:', error);
+                    clearAndAddHttpError({ key: 'files', error });
                 });
         },
-        [directory, uuid],
+        [clearAndAddHttpError, directory, uuid],
     );
 
     const handleImageViewerClose = () => {
@@ -290,70 +285,69 @@ export default () => {
                         </div>
                     </div>
                 </Card>
-                <Card className={'items-center mb-1 rounded-none! px-2! py-2! bg-gray-800! hidden md:block'}>
-                    <div className='order-4 md:order-0 flex items-center gap-1'>
-                        <div className='flex-1 ms-13.75'>
-                            <button
-                                onClick={() => {
-                                    if (sortType === 'name') {
-                                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                                    } else {
-                                        setSortType('name');
-                                        setSortDirection('asc');
-                                    }
-                                }}
-                                className={'flex items-center gap-x-1 text-sm text-gray-300'}
-                            >
-                                <span className='text-xs font-semibold'>{t('name')}</span>
-                                {sortType === 'name' ? (
-                                    <FaArrowDownAZ className={sortDirection === 'asc' ? 'rotate-180' : ''} />
-                                ) : (
-                                    <FaArrowUpAZ />
-                                )}
-                            </button>
+                {!grid && !query && (
+                    <Card className={'items-center mb-1 rounded-none! px-2! py-2! bg-gray-800! hidden md:block'}>
+                        <div className='order-4 md:order-0 flex items-center gap-1'>
+                            <div className='flex-1 ms-13.75'>
+                                <button
+                                    onClick={() => {
+                                        if (sortType === 'name') {
+                                            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                                        } else {
+                                            setSortType('name');
+                                            setSortDirection('asc');
+                                        }
+                                    }}
+                                    className={'flex items-center gap-x-1 text-sm text-gray-300'}
+                                >
+                                    <span className='text-xs font-semibold'>{t('name')}</span>
+                                    <FileSortIcon
+                                        column='name'
+                                        direction={sortType === 'name' ? sortDirection : 'asc'}
+                                    />
+                                </button>
+                            </div>
+                            <div className='w-1/6 justify-end flex'>
+                                <button
+                                    onClick={() => {
+                                        if (sortType === 'size') {
+                                            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                                        } else {
+                                            setSortType('size');
+                                            setSortDirection('asc');
+                                        }
+                                    }}
+                                    className={'flex items-center gap-x-1 text-sm text-gray-300'}
+                                >
+                                    <span className='text-xs font-semibold'>{t('size')}</span>
+                                    <FileSortIcon
+                                        column='size'
+                                        direction={sortType === 'size' ? sortDirection : 'asc'}
+                                    />
+                                </button>
+                            </div>
+                            <div className='w-1/5 me-20 justify-end flex'>
+                                <button
+                                    onClick={() => {
+                                        if (sortType === 'date') {
+                                            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                                        } else {
+                                            setSortType('date');
+                                            setSortDirection('asc');
+                                        }
+                                    }}
+                                    className={'flex items-center gap-x-1 text-sm text-gray-300'}
+                                >
+                                    <span className='text-xs font-semibold'>{t('date')}</span>
+                                    <FileSortIcon
+                                        column='date'
+                                        direction={sortType === 'date' ? sortDirection : 'asc'}
+                                    />
+                                </button>
+                            </div>
                         </div>
-                        <div className='w-1/6 justify-end flex'>
-                            <button
-                                onClick={() => {
-                                    if (sortType === 'size') {
-                                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                                    } else {
-                                        setSortType('size');
-                                        setSortDirection('asc');
-                                    }
-                                }}
-                                className={'flex items-center gap-x-1 text-sm text-gray-300'}
-                            >
-                                <span className='text-xs font-semibold'>{t('size')}</span>
-                                {sortType === 'size' ? (
-                                    <FaArrowDown19 className={sortDirection === 'asc' ? 'rotate-180' : ''} />
-                                ) : (
-                                    <FaArrowUp19 />
-                                )}
-                            </button>
-                        </div>
-                        <div className='w-1/5 me-20 justify-end flex'>
-                            <button
-                                onClick={() => {
-                                    if (sortType === 'date') {
-                                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                                    } else {
-                                        setSortType('date');
-                                        setSortDirection('asc');
-                                    }
-                                }}
-                                className={'flex items-center gap-x-1 text-sm text-gray-300'}
-                            >
-                                <span className='text-xs font-semibold'>{t('date')}</span>
-                                {sortType === 'date' ? (
-                                    <FaArrowDownShortWide className={sortDirection === 'asc' ? 'rotate-180' : ''} />
-                                ) : (
-                                    <FaArrowUpShortWide />
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </Card>
+                    </Card>
+                )}
             </ErrorBoundary>
             {!files ? (
                 <Spinner size={'large'} centered />
@@ -435,6 +429,7 @@ export default () => {
                     onDismissed={handleVideoViewerClose}
                     videoUrl={selectedVideo.url}
                     videoName={selectedVideo.name}
+                    videoMimeType={selectedVideo.mimetype}
                     appear
                 />
             )}

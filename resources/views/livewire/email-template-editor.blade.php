@@ -1,5 +1,5 @@
 <div wire:ignore x-load x-load-src="{{ Vite::asset('resources/scripts/admin/emailTemplateEditor.ts') }}" x-data="emailTemplateEditor($wire, @js(trans('admin/email')), @js($previewValues))" class="email-template-editor" data-logo-url="{{ url(config('app.logo') ?: '/reviactyl/logo.png') }}" :inert="busy"
-    @pointerup.window="stopFontSize()" @blur.window="stopFontSize()" @email-save.window="save()">
+    @pointerup.window="stopFontSize()" @blur.window="stopFontSize()" @email-save.window="save()" @email-reset.window="reset()">
     <aside class="designify-editor__panel email-template-editor__inspector">
         <x-filament::section icon="tabler-mail" :heading="trans('admin/email.emails')">
             <label for="email-template-subject" class="email-field-label">{{ trans('admin/email.subject') }}</label>
@@ -94,7 +94,7 @@
         <p role="status" x-text="status" class="email-editor-message"></p>
         <p role="alert" x-text="error" class="email-editor-message text-danger-600"></p>
     </aside>
-    <section class="designify-editor__panel designify-editor__preview">
+    <section class="designify-editor__panel designify-editor__preview email-template-editor__preview">
         <div class="designify-editor__preview-bar">
             <div class="designify-editor__preview-tools">
                 <div class="email-type-picker">

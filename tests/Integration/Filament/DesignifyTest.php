@@ -3,9 +3,12 @@
 namespace Tests\Integration\Filament;
 
 use App\Filament\Pages\Designify;
+use App\Http\ViewComposers\DesignifyComposer;
+use App\Livewire\EmailTemplateEditor;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\Designify\SiteImageService;
+use App\Services\Mail\EmailTemplateService;
 use Filament\Facades\Filament;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\UploadedFile;
@@ -15,6 +18,83 @@ use Tests\Integration\IntegrationTestCase;
 
 class DesignifyTest extends IntegrationTestCase
 {
+    public function test_legacy_image_paths_preview_and_render_after_saving(): void
+    {
+        $this->actingAs(User::factory()->create(['root_admin' => true]));
+        Filament::setCurrentPanel(Filament::getPanel('admin'));
+        $page = Livewire::test(Designify::class)
+            ->set('data.designify:background', '/public/reviactyl/logo.png');
+        foreach ([403, 404, 500] as $status) {
+            $page->set('data.designify:errors:'.$status.':image', '/public/reviactyl/icon.png');
+        }
+
+        $page->assertDispatched('designify-preview-updated', fn ($name, $params) => $params['settings']['background'] === '/reviactyl/logo.png'
+            && $params['settings']['errors'][403]['image'] === '/reviactyl/icon.png'
+            && $params['settings']['errors'][404]['image'] === '/reviactyl/icon.png'
+            && $params['settings']['errors'][500]['image'] === '/reviactyl/icon.png');
+        $page->call('save')->assertHasNoErrors();
+
+        $settings = ['background' => '/public/reviactyl/logo.png'];
+        foreach ([403, 404, 500] as $status) {
+            $settings['errors:'.$status.':image'] = '/public/reviactyl/icon.png';
+        }
+        foreach ($settings as $key => $value) {
+            $this->assertDatabaseHas('settings', [
+                'key' => 'settings::designify:'.$key,
+                'value' => $key === 'background' ? '/reviactyl/logo.png' : $value,
+            ]);
+            config(['designify.'.str_replace(':', '.', $key) => $value]);
+        }
+        app()->forgetInstance(DesignifyComposer::class);
+
+        $this->get('/')->assertOk()->assertSee('--background: url(/reviactyl/logo.png);', false);
+        foreach ([403, 404, 500] as $status) {
+            $this->get('/preview/'.$status)->assertStatus($status)
+                ->assertSee('src="/reviactyl/icon.png"', false)
+                ->assertDontSee('src="/public/reviactyl/icon.png"', false);
+        }
+    }
+
+    public function test_saved_font_choices_keep_their_values_and_render_the_actual_family(): void
+    {
+        $this->actingAs(User::factory()->create(['root_admin' => true]));
+        Filament::setCurrentPanel(Filament::getPanel('admin'));
+        $page = Livewire::test(Designify::class);
+
+        foreach (['Poppins', 'Inter', 'Roboto', 'Cairo', 'Google+Sans', 'Playpen+Sans+Arabic', 'Noto+Sans'] as $font) {
+            $page->set('data.designify:fontFamily', $font)
+                ->set('data.designify:copyright', 'Font test copyright')
+                ->call('save')->assertHasNoErrors();
+            $this->assertDatabaseHas('settings', ['key' => 'settings::designify:fontFamily', 'value' => $font]);
+            Livewire::test(Designify::class)
+                ->assertSet('data.designify:fontFamily', $font)
+                ->assertSet('data.designify:copyright', 'Font test copyright');
+            config(['designify.fontFamily' => $font]);
+            app()->forgetInstance(DesignifyComposer::class);
+            $this->get('/')->assertOk()
+                ->assertSee('--font-family: "'.str_replace('+', ' ', $font).'", sans-serif;', false)
+                ->assertSee('https://fonts.googleapis.com/css2?family='.$font.':ital,wght@', false);
+        }
+    }
+
+    public function test_email_reset_preserves_theme_and_other_saved_templates(): void
+    {
+        $this->actingAs(User::factory()->create(['root_admin' => true]));
+        $service = app(EmailTemplateService::class);
+        Setting::query()->create(['key' => 'settings::designify:site_title', 'value' => 'Custom panel']);
+        $other = $service->save('AccountCreated', ['subject' => 'Welcome', 'html' => '<a href="{{ action_url }}">Join</a>']);
+        $service->save('MailTested', ['subject' => 'Custom test', 'html' => '<p>Custom body</p>']);
+
+        Livewire::test(EmailTemplateEditor::class)
+            ->call('resetTemplate', 'MailTested')
+            ->assertReturned($service->defaults('MailTested'));
+
+        $this->assertDatabaseMissing('settings', ['key' => 'settings::email-template:MailTested']);
+        $this->assertDatabaseHas('settings', ['key' => 'settings::designify:site_title', 'value' => 'Custom panel']);
+        $this->assertSame($other, $service->load('AccountCreated'));
+        Livewire::test(EmailTemplateEditor::class)->call('loadTemplate', 'AccountCreated')->assertReturned($other);
+    }
+
     public function test_background_scope_saves_and_rejects_unknown_options(): void
     {
         $this->actingAs(User::factory()->create(['root_admin' => true]));

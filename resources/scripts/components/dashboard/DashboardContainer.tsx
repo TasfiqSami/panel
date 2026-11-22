@@ -18,7 +18,7 @@ import useModernHeaders from '@/reviactyl/ui/useModernHeaders';
 import { EmojiSadIcon, FilterIcon } from '@heroicons/react/solid';
 import { useTranslation } from 'react-i18next';
 import getServerCategories from '@/api/account/getServerCategories';
-import getClientEggs from '@/api/getClientEggs';
+import getClientEggs, { type ClientEgg } from '@/api/getClientEggs';
 import CategorySection from '@/components/dashboard/CategorySection';
 import CategoryManagerModal from '@/components/dashboard/CategoryManagerModal';
 import { LayoutContainer, ServerLayout } from '@/components/dashboard/ServerLayout';
@@ -36,7 +36,7 @@ import { ServerCategory } from '@/api/account/getServerCategories';
 import FolderFormModal from './FolderFormModal';
 import DeleteFolderModal from './DeleteFolderModal';
 import { folderTree, folderPath } from './folderTree';
-import { ServerResourcesContext } from '@/context/ServerResourcesContext';
+import { ServerResourcesContext, getServerResourceCache, resourceCacheScope } from '@/context/ServerResourcesContext';
 
 const DashboardHeader = ({
     title,
@@ -92,14 +92,15 @@ const DashboardContainer = () => {
     const [editingFolder, setEditingFolder] = useState<ServerCategory | null>(null);
     const [deletingFolder, setDeletingFolder] = useState<ServerCategory | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
-    const [selectedEggId, setSelectedEggId] = useState<number | null>(null);
+    const [selectedEgg, setSelectedEgg] = useState<ClientEgg | null>(null);
+    const selectedEggId = selectedEgg?.id ?? null;
     const [eggFilterOpen, setEggFilterOpen] = useState(false);
     const eggFilterRef = useRef<HTMLDivElement>(null);
     const {
         data: categories,
         mutate: mutateCategories,
         error: categoryError,
-    } = useSWR(session ? null : '/api/client/account/categories', getServerCategories);
+    } = useSWR(session ? null : '/api/client/account/categories', getServerCategories, { revalidateIfStale: false });
     useEffect(() => {
         if (
             folders &&
@@ -120,7 +121,6 @@ const DashboardContainer = () => {
             : folders && selectedCategory === 'all'
               ? 'primary'
               : selectedCategory;
-    const activeEggId = showAdminServers ? null : selectedEggId;
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -137,17 +137,21 @@ const DashboardContainer = () => {
     }, [eggFilterOpen]);
 
     const eggsKey = showAdminServers ? ['/api/client/eggs', 'admin'] : '/api/client/eggs';
-    const { data: eggs } = useSWR(eggsKey, () => getClientEggs(showAdminServers ? 'admin' : undefined));
+    const { data: eggs } = useSWR(eggsKey, () => getClientEggs(showAdminServers ? 'admin' : undefined), {
+        revalidateIfStale: false,
+    });
+    const eggOptions =
+        selectedEgg && !eggs?.some((egg) => egg.id === selectedEgg.id) ? [...(eggs ?? []), selectedEgg] : (eggs ?? []);
 
     const { data: servers, error } = useSWR<PaginatedResult<Server>>(
-        ['/api/client/servers', showAdminServers, page, activeCategory, activeEggId],
+        ['/api/client/servers', showAdminServers, page, activeCategory, selectedEggId],
         () =>
             getServers({
                 page,
                 type: showAdminServers ? 'admin' : undefined,
                 'filter[category_uuid]':
                     activeCategory === 'all' ? undefined : activeCategory === 'primary' ? 'null' : activeCategory,
-                eggId: activeEggId ?? undefined,
+                eggId: selectedEggId ?? undefined,
             }),
     );
 
@@ -258,7 +262,7 @@ const DashboardContainer = () => {
             >
                 {!session && (
                     <div className='flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto'>
-                        <div className='flex flex-row items-center justify-between sm:justify-start gap-4 sm:gap-0 w-full sm:w-auto sm:space-x-4'>
+                        <div className='flex flex-row flex-wrap sm:flex-nowrap items-center justify-between sm:justify-start gap-4 sm:gap-0 w-full sm:w-auto sm:space-x-4'>
                             {layoutType === 'modern' && (
                                 <div className='w-full sm:w-auto'>
                                     <SearchContainer />
@@ -267,7 +271,7 @@ const DashboardContainer = () => {
                             {rootAdmin && (
                                 <div className='flex shrink-0 items-center justify-between gap-2'>
                                     <p className='uppercase text-xs text-gray-300 whitespace-nowrap'>
-                                        {showOnlyAdmin ? t('other-servers') : t('your-servers')}
+                                        {showAdminServers ? t('other-servers') : t('your-servers')}
                                     </p>
 
                                     <Switch
@@ -281,7 +285,7 @@ const DashboardContainer = () => {
                                 </div>
                             )}
 
-                            <div className='relative flex shrink-0 items-center sm:border-l sm:border-gray-700 sm:pl-4 gap-x-1'>
+                            <div className='relative ms-auto sm:ms-0 flex shrink-0 items-center sm:border-l sm:border-gray-700 sm:pl-4 gap-x-1'>
                                 {!folders && (
                                     <div>
                                         <Button.Text
@@ -297,31 +301,28 @@ const DashboardContainer = () => {
                                 )}
 
                                 <div>
-                                    {!showOnlyAdmin && (
-                                        <Button.Text
-                                            type='button'
-                                            onClick={() => setEggFilterOpen((o) => !o)}
-                                            className={clsx(
-                                                'p-2!',
-                                                (selectedEggId !== null || selectedCategory !== 'all') &&
-                                                    'bg-reviactyl! text-on-primary!',
-                                            )}
-                                            title={t('filter-label')}
-                                            aria-label={t('filter-label')}
-                                            aria-expanded={eggFilterOpen}
-                                        >
-                                            <FilterIcon className='w-5 h-5' />
-                                        </Button.Text>
-                                    )}
+                                    <Button.Text
+                                        type='button'
+                                        onClick={() => setEggFilterOpen((o) => !o)}
+                                        className={clsx(
+                                            'p-2!',
+                                            (selectedEggId !== null ||
+                                                (!showAdminServers && selectedCategory !== 'all')) &&
+                                                'bg-reviactyl! text-on-primary!',
+                                        )}
+                                        title={t('filter-label')}
+                                        aria-label={t('filter-label')}
+                                        aria-expanded={eggFilterOpen}
+                                    >
+                                        <FilterIcon className='w-5 h-5' />
+                                    </Button.Text>
 
                                     {eggFilterOpen && (
                                         <Card
                                             ref={eggFilterRef}
                                             className='absolute right-0 sm:left-auto top-full mt-1.5 z-10 min-w-45 py-2! px-2! shadow-lg'
                                         >
-                                            {/* Egg filter is global (not user-specific): show for both "your servers" and "others' servers" */}
-                                            {(eggs && eggs.length > 0) ||
-                                            (rootAdmin && showOnlyAdmin && Array.isArray(eggs)) ? (
+                                            {eggOptions.length > 0 || (showAdminServers && Array.isArray(eggs)) ? (
                                                 <div className='mb-2 border-b border-gray-800 pb-2'>
                                                     <p className='text-xs text-gray-200 uppercase px-2 pb-1.5'>
                                                         {t('eggs.filter-label')}
@@ -331,8 +332,10 @@ const DashboardContainer = () => {
                                                         className='w-full'
                                                         value={selectedEggId ?? ''}
                                                         onChange={(e) => {
-                                                            setSelectedEggId(
-                                                                e.target.value === '' ? null : Number(e.target.value),
+                                                            setSelectedEgg(
+                                                                eggOptions.find(
+                                                                    (egg) => egg.id === Number(e.target.value),
+                                                                ) ?? null,
                                                             );
                                                             setEggFilterOpen(false);
                                                         }}
@@ -340,7 +343,7 @@ const DashboardContainer = () => {
                                                     >
                                                         <option value=''>{t('eggs.all')}</option>
 
-                                                        {eggs.map((egg) => (
+                                                        {eggOptions.map((egg) => (
                                                             <option key={egg.id} value={egg.id}>
                                                                 {egg.name}
                                                             </option>
@@ -349,7 +352,7 @@ const DashboardContainer = () => {
                                                 </div>
                                             ) : null}
 
-                                            {!showOnlyAdmin && !folders && (
+                                            {!showAdminServers && !folders && (
                                                 <div>
                                                     <p className='text-xs text-gray-200 uppercase px-2 pb-1.5'>
                                                         {t('categories.filter-label')}
@@ -471,7 +474,7 @@ const DashboardContainer = () => {
                                     <Card className='col-span-1 lg:col-span-2'>
                                         <p className='flex justify-center text-center text-sm text-gray-400 py-10'>
                                             <EmojiSadIcon className='w-5 h-5 mr-1' />{' '}
-                                            {activeEggId !== null
+                                            {selectedEggId !== null
                                                 ? t('eggs.no-servers-for-egg')
                                                 : showAdminServers
                                                   ? t('no-other-servers')
@@ -516,7 +519,7 @@ const DashboardContainer = () => {
                                             .map((folder) => folder.name)
                                             .join(' / ')}
                                         servers={groupedServers[slug] || []}
-                                        showOnlyAdmin={showOnlyAdmin || false}
+                                        showOnlyAdmin={showAdminServers || false}
                                         showCategory={!session}
                                         onCategoryChanged={refreshServerLists}
                                     />
@@ -541,7 +544,10 @@ const DashboardContainer = () => {
 export default () => {
     const uuid = useStoreState((state) => state.user.data!.uuid);
     const { session } = useSubuserPreview();
-    const resourceCache = useMemo(() => new Map(), [uuid, session?.uuid]);
+    const resourceCache = useMemo(
+        () => getServerResourceCache(resourceCacheScope(uuid, session?.uuid)),
+        [uuid, session?.uuid],
+    );
 
     return (
         <ServerResourcesContext.Provider value={resourceCache}>

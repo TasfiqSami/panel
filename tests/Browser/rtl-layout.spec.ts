@@ -36,15 +36,19 @@ async function openFixture(
     responses: Record<string, unknown> = {},
 ) {
     const authenticated = !path.startsWith('/auth/');
-    const html = renderFixture(path, authenticated).replace(
-        '</body>',
-        `<script>
+    const html = renderFixture(path, authenticated)
+        // The fixture page embeds API responses from the fixture database; drop them so the page
+        // asks the routes stubbed below instead.
+        .replace(/<script type="application\/json" id="reviactyl-initial-responses">[\s\S]*?<\/script>/, '')
+        .replace(
+            '</body>',
+            `<script>
             window.SiteConfiguration.locale = ${JSON.stringify(language)};
             window.PanelConfiguration.layoutType = ${JSON.stringify(layout)};
             Object.assign(window.PanelConfiguration, ${JSON.stringify(settings)});
             if (window.PanelUser) window.PanelUser.language = ${JSON.stringify(language)};
         </script></body>`,
-    );
+        );
     const publicPath = resolve('public');
     await page.route('**/*', async (route) => {
         const url = new URL(route.request().url());
@@ -124,7 +128,7 @@ test('Arabic selects reserve space for the arrow at the inline end', async ({ pa
         };
     });
     expect(style.left).toBeGreaterThan(style.right);
-    expect(style.arrow).toBe('12px');
+    expect(style.arrow).toBe('12px, 17px');
 });
 
 for (const language of ['ar', 'en']) {
@@ -267,6 +271,14 @@ const serverFixture = {
     meta: { is_server_owner: true },
 };
 const folderName = 'مجلد المشروعات العربية للتطوير';
+const usageFixture = {
+    object: 'stats',
+    attributes: {
+        current_state: 'running',
+        is_suspended: false,
+        resources: { memory_bytes: 1024, cpu_absolute: 5, disk_bytes: 2048, uptime: 1000 },
+    },
+};
 const dashboardResponses = {
     '/api/client': {
         data: [serverFixture],
@@ -275,13 +287,9 @@ const dashboardResponses = {
     '/api/client/account/categories': {
         data: [{ attributes: { uuid: 'folder-one', name: folderName, color: '#3b82f6', parent_uuid: null } }],
     },
-    '/api/client/servers/00000000-0000-4000-8000-000000000001/resources': {
-        attributes: {
-            current_state: 'running',
-            is_suspended: false,
-            resources: { memory_bytes: 1024, cpu_absolute: 5, disk_bytes: 2048, uptime: 1000 },
-        },
-    },
+    '/api/client/servers/00000000-0000-4000-8000-000000000001/resources': usageFixture,
+    // The dashboard asks for every visible server's usage in one request.
+    '/api/client/resources': { object: 'list', data: { '00000000-0000-4000-8000-000000000001': usageFixture } },
 };
 
 for (const layout of ['modern', 'classic', 'compact', 'accent']) {
@@ -312,7 +320,7 @@ for (const layout of ['modern', 'classic', 'compact', 'accent']) {
                     await page.setViewportSize({ width, height: 900 });
                     await folder.scrollIntoViewIfNeeded();
                     const folderBox = (await folder.boundingBox())!;
-                    const actions = folder.locator('..').locator('div.absolute');
+                    const actions = folder.locator('..').locator(':scope > div');
                     const actionsBox = (await actions.boundingBox())!;
                     expect(
                         language === 'ar'
@@ -365,26 +373,29 @@ for (const layout of ['modern', 'classic', 'compact', 'accent']) {
             }) => {
                 const fileName = 'إعدادات Minecraft.txt';
                 const base = '/server/rtl-test';
+                const files = {
+                    data: [
+                        {
+                            attributes: {
+                                name: fileName,
+                                mode: '-rw-r--r--',
+                                mode_bits: '644',
+                                size: 32,
+                                is_file: true,
+                                is_symlink: false,
+                                mimetype: 'text/plain',
+                                created_at: '2026-01-01T00:00:00Z',
+                                modified_at: '2026-01-01T00:00:00Z',
+                            },
+                        },
+                    ],
+                };
                 const responses = {
                     ...dashboardResponses,
                     '/api/client/servers/rtl-test': serverFixture,
-                    [`/api/client/servers/${serverFixture.attributes.uuid}/files/list`]: {
-                        data: [
-                            {
-                                attributes: {
-                                    name: fileName,
-                                    mode: '-rw-r--r--',
-                                    mode_bits: '644',
-                                    size: 32,
-                                    is_file: true,
-                                    is_symlink: false,
-                                    mimetype: 'text/plain',
-                                    created_at: '2026-01-01T00:00:00Z',
-                                    modified_at: '2026-01-01T00:00:00Z',
-                                },
-                            },
-                        ],
-                    },
+                    // The page starts the listing by the identifier in its URL before the server loads.
+                    '/api/client/servers/rtl-test/files/list': files,
+                    [`/api/client/servers/${serverFixture.attributes.uuid}/files/list`]: files,
                 };
                 await openFixture(page, `${base}/files`, 'ar', layout, { headerStyle, fileLayout }, responses);
                 const checkbox = page.getByRole('checkbox', { name: fileName, exact: true });
@@ -457,6 +468,111 @@ for (const language of ['ar', 'en']) {
                 }
                 expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
             }
+        });
+    }
+}
+
+for (const language of ['en', 'ar']) {
+    for (const longValues of [false, true]) {
+        test(`server header aligns and contains ${longValues ? 'long' : 'normal'} values in ${language}`, async ({
+            page,
+        }) => {
+            const alias = longValues ? 'allocation-alias-'.repeat(16) : 'play.example.test';
+            const name = longValues ? 'Long server name '.repeat(12) : 'Demo Playground';
+            const value = `${alias}:25565`;
+            await page.addInitScript(() => {
+                Object.assign(window, { copiedHeaderValue: '', copiedHeaderCount: 0 });
+                document.execCommand = (command) => {
+                    if (command !== 'copy') return false;
+                    const win = window as unknown as { copiedHeaderValue: string; copiedHeaderCount: number };
+                    win.copiedHeaderValue = window.getSelection()?.toString() ?? '';
+                    win.copiedHeaderCount += 1;
+                    return true;
+                };
+            });
+            await openFixture(
+                page,
+                '/server/rtl-test/files',
+                language,
+                'modern',
+                {},
+                {
+                    '/api/client/servers/rtl-test': {
+                        ...serverFixture,
+                        attributes: {
+                            ...serverFixture.attributes,
+                            name,
+                            relationships: {
+                                allocations: {
+                                    data: [
+                                        { ...allocation, attributes: { ...allocation.attributes, ip_alias: alias } },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                },
+            );
+            const title = page.getByTitle(name, { exact: true });
+            const card = title.locator('xpath=../../..');
+            const header = card.locator('..');
+            const body = page.locator('.text-4xl').locator('..');
+            const allocationValue = header.getByRole('button', { name: value, exact: true });
+            for (const width of [320, 390, 640, 768, 1024, 1199, 1280, 1600]) {
+                await page.setViewportSize({ width, height: 900 });
+                await expect(title).toBeVisible();
+                const toggle = header.locator('button.w-full');
+                if (width < 640 && !(await allocationValue.isVisible())) await toggle.click();
+                await expect(allocationValue).toBeVisible();
+                const cardBox = (await card.boundingBox())!;
+                const bodyBox = (await body.boundingBox())!;
+                expect(Math.abs(cardBox.x - bodyBox.x)).toBeLessThanOrEqual(1);
+                expect(Math.abs(cardBox.x + cardBox.width - bodyBox.x - bodyBox.width)).toBeLessThanOrEqual(1);
+                for (const control of [allocationValue, ...(await card.getByRole('button').all())]) {
+                    if (!(await control.isVisible())) continue;
+                    const box = (await control.boundingBox())!;
+                    expect(box.x).toBeGreaterThanOrEqual(cardBox.x);
+                    expect(box.x + box.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+                }
+                expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+                if (longValues) {
+                    expect(await allocationValue.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+                }
+            }
+            let expectedCopies = 0;
+            for (const key of ['Enter', 'Space']) {
+                await page.evaluate(() => {
+                    (window as unknown as { copiedHeaderValue: string }).copiedHeaderValue = '';
+                });
+                await allocationValue.focus();
+                await expect(allocationValue).toBeFocused();
+                await allocationValue.press(key);
+                expectedCopies += 1;
+                expect(
+                    await page.evaluate(() => {
+                        const win = window as unknown as { copiedHeaderValue: string; copiedHeaderCount: number };
+                        return { value: win.copiedHeaderValue, count: win.copiedHeaderCount };
+                    }),
+                ).toEqual({ value, count: expectedCopies });
+            }
+            await page.evaluate(() => {
+                (window as unknown as { copiedHeaderValue: string }).copiedHeaderValue = '';
+            });
+            await allocationValue.click();
+            expectedCopies += 1;
+            expect(
+                await page.evaluate(() => {
+                    const win = window as unknown as { copiedHeaderValue: string; copiedHeaderCount: number };
+                    return { value: win.copiedHeaderValue, count: win.copiedHeaderCount };
+                }),
+            ).toEqual({ value, count: expectedCopies });
+            await page.setViewportSize({ width: 390, height: 900 });
+            const toggle = header.locator('button.w-full');
+            await toggle.focus();
+            await toggle.press('Enter');
+            await expect(allocationValue).toBeHidden();
+            await toggle.press('Space');
+            await expect(allocationValue).toBeVisible();
         });
     }
 }

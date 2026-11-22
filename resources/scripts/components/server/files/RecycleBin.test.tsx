@@ -1,5 +1,14 @@
 import { MemoryRouter } from 'react-router-dom';
-import { act, type ReactNode } from 'react';
+import { act, createElement, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import {
+    FaArrowDownAZ,
+    FaArrowDownZA,
+    FaArrowDown19,
+    FaArrowDown91,
+    FaArrowDownShortWide,
+    FaArrowDownWideShort,
+} from 'react-icons/fa6';
 import { createRoot, type Root } from 'react-dom/client';
 import { getByRole, getAllByRole } from '@testing-library/dom';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,8 +17,12 @@ import RecycleBin from './RecycleBin';
 const mocks = vi.hoisted(() => ({
     post: vi.fn(),
     mutate: vi.fn(),
+    refreshChildren: vi.fn(),
+    listingError: false,
+    browseError: false,
     conflict: false,
     nested: false,
+    sorting: false,
     load: vi.fn(),
     navigate: vi.fn(),
 }));
@@ -25,30 +38,56 @@ vi.mock('swr', () => ({
         Array.isArray(key)
             ? {
                   data: [{ name: 'nested.txt', isFile: true, size: 3, modifiedAt: new Date('2026-11-10T12:00:00Z') }],
-                  mutate: mocks.mutate,
+                  ...(mocks.browseError ? { data: undefined, error: new Error('Directory unavailable') } : {}),
+                  mutate: mocks.refreshChildren,
               }
             : !key
               ? {}
               : {
                     data: {
                         size: 3,
-                        data: [
-                            {
-                                id: 'a',
-                                original_path: mocks.nested ? '/world' : '/world/one.txt',
-                                created_at: '2026-11-10T12:00:00Z',
-                                size: 1,
-                                is_file: true,
-                            },
-                            {
-                                id: 'b',
-                                original_path: '/world/two.txt',
-                                created_at: '2026-11-10T12:00:00Z',
-                                size: 2,
-                                is_file: true,
-                            },
-                        ],
+                        data: mocks.sorting
+                            ? [
+                                  {
+                                      id: 'z',
+                                      original_path: '/zebra.txt',
+                                      size: 1,
+                                      created_at: '2026-11-02T12:00:00Z',
+                                      is_file: true,
+                                  },
+                                  {
+                                      id: 'a',
+                                      original_path: '/alpha.txt',
+                                      size: 2,
+                                      created_at: '2026-11-03T12:00:00Z',
+                                      is_file: true,
+                                  },
+                                  {
+                                      id: 'm',
+                                      original_path: '/middle.txt',
+                                      size: 3,
+                                      created_at: '2026-11-01T12:00:00Z',
+                                      is_file: true,
+                                  },
+                              ]
+                            : [
+                                  {
+                                      id: 'a',
+                                      original_path: mocks.nested ? '/world' : '/world/one.txt',
+                                      created_at: '2026-11-10T12:00:00Z',
+                                      size: 1,
+                                      is_file: true,
+                                  },
+                                  {
+                                      id: 'b',
+                                      original_path: '/world/two.txt',
+                                      created_at: '2026-11-10T12:00:00Z',
+                                      size: 2,
+                                      is_file: true,
+                                  },
+                              ],
                     },
+                    ...(mocks.listingError ? { data: undefined, error: new Error('Listing unavailable') } : {}),
                     mutate: mocks.mutate,
                 },
 }));
@@ -75,6 +114,9 @@ beforeEach(async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     mocks.conflict = false;
     mocks.nested = false;
+    mocks.sorting = false;
+    mocks.listingError = false;
+    mocks.browseError = false;
     mocks.navigate.mockReset();
     mocks.load
         .mockReset()
@@ -84,6 +126,7 @@ beforeEach(async () => {
         data: { conflict: body.preview && mocks.conflict ? '/world/one.txt' : null },
     }));
     mocks.mutate.mockReset().mockResolvedValue(undefined);
+    mocks.refreshChildren.mockReset().mockResolvedValue(undefined);
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -102,6 +145,63 @@ afterEach(async () => {
 const click = async (element: HTMLElement) => {
     await act(async () => element.click());
 };
+
+describe('recycle bin sort indicators and order', () => {
+    it.each([
+        {
+            column: 'name',
+            ascending: ['/alpha.txt', '/middle.txt', '/zebra.txt'],
+            icons: [FaArrowDownAZ, FaArrowDownZA],
+        },
+        {
+            column: 'size',
+            ascending: ['/zebra.txt', '/alpha.txt', '/middle.txt'],
+            icons: [FaArrowDown19, FaArrowDown91],
+        },
+        {
+            column: 'date',
+            ascending: ['/middle.txt', '/zebra.txt', '/alpha.txt'],
+            icons: [FaArrowDownShortWide, FaArrowDownWideShort],
+        },
+    ])('uses upright $column indicators matching both sort directions', async ({ column, ascending, icons }) => {
+        mocks.sorting = true;
+        await act(async () =>
+            root.render(
+                <MemoryRouter>
+                    <RecycleBin />
+                </MemoryRouter>,
+            ),
+        );
+        const button = getByRole(container, 'button', { name: `server/files:${column}` });
+        const names = () =>
+            getAllByRole(container, 'checkbox')
+                .slice(1)
+                .map((checkbox) => checkbox.getAttribute('aria-label'));
+        if (column !== 'name') await click(button);
+        for (const [index, expected] of [ascending, [...ascending].reverse()].entries()) {
+            if (index) await click(button);
+            expect(names()).toEqual(expected);
+            const expectedSvg = document.createElement('div');
+            expectedSvg.innerHTML = renderToStaticMarkup(createElement(icons[index]!));
+            expect(button.querySelector('svg')?.innerHTML).toBe(expectedSvg.querySelector('svg')!.innerHTML);
+            expect(button.querySelector('[class*="rotate"], [style*="transform"]')).toBeNull();
+            for (const other of ['name', 'size', 'date'].filter((value) => value !== column)) {
+                expect(
+                    getByRole(container, 'button', { name: `server/files:${other}` }).querySelector('svg'),
+                ).toBeNull();
+            }
+        }
+        await click(getByRole(container, 'button', { name: `server/files:${column === 'name' ? 'date' : 'name'}` }));
+        await click(button);
+        expect(names()).toEqual(ascending);
+        await click(getByRole(container, 'checkbox', { name: ascending[0] }));
+        await click(getByRole(container, 'button', { name: 'restore' }));
+        expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/client/servers/server/files/recycle-bin/restore', {
+            id: ascending[0] === '/zebra.txt' ? 'z' : ascending[0] === '/alpha.txt' ? 'a' : 'm',
+            preview: true,
+        });
+    });
+});
 
 describe('recycle bin restore workflow', () => {
     it('previews a bulk restore and waits for explicit confirmation', async () => {
@@ -180,5 +280,46 @@ describe('recycle bin restore workflow', () => {
             id: 'a',
             path: 'deep/nested.txt',
         });
+    });
+});
+
+describe('recycle bin loading recovery', () => {
+    it.each([
+        { nested: true, listingError: true, browseError: false },
+        { nested: true, listingError: false, browseError: true },
+        { nested: true, listingError: true, browseError: true },
+        { nested: false, listingError: true, browseError: false },
+    ])('recovers nested=$nested listingError=$listingError browseError=$browseError', async (scenario) => {
+        Object.assign(mocks, scenario);
+        const render = () =>
+            root.render(
+                <MemoryRouter
+                    key='retry'
+                    initialEntries={[
+                        scenario.nested
+                            ? '/server/server/files#/.recycle-bin/a/world/deep'
+                            : '/server/server/files#/.recycle-bin',
+                    ]}
+                >
+                    <RecycleBin />
+                </MemoryRouter>,
+            );
+        mocks.mutate.mockImplementation(async () => {
+            mocks.listingError = false;
+            render();
+        });
+        mocks.refreshChildren.mockImplementation(async () => {
+            mocks.browseError = false;
+            render();
+        });
+        await act(async () => render());
+        expect(getByRole(container, 'alert').textContent).toBe('Failed');
+        await click(getByRole(container, 'button', { name: 'retry' }));
+        expect(mocks.mutate).toHaveBeenCalledTimes(scenario.listingError ? 1 : 0);
+        expect(mocks.refreshChildren).toHaveBeenCalledTimes(scenario.browseError ? 1 : 0);
+        expect(container.querySelector('[role="alert"]')).toBeNull();
+        expect(
+            getByRole(container, 'checkbox', { name: scenario.nested ? '/world/deep/nested.txt' : '/world/one.txt' }),
+        ).toBeDefined();
     });
 });

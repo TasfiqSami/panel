@@ -18,8 +18,35 @@ config(['database.default' => 'sqlite', 'database.connections.sqlite.database' =
 DB::purge('sqlite');
 Artisan::call('migrate', ['--force' => true]);
 
-if (($argv[2] ?? null) === 'admin') {
+if (isset($argv[3])) {
+    config(['designify.fontFamily' => $argv[3]]);
+}
+
+if (($argv[2] ?? null) === 'github') {
+    config(['panel.auth.github_enabled' => true]);
+}
+
+if (in_array($argv[2] ?? null, ['compact', 'accent'], true)) {
+    config(['designify.layoutType' => $argv[2]]);
+    foreach (['google', 'discord', 'github'] as $provider) {
+        config(['panel.auth.'.$provider.'_enabled' => true]);
+    }
+}
+
+if (($argv[2] ?? null) === 'classic') {
+    config(['designify.layoutType' => 'classic', 'designify.sidebarLogout' => true, 'designify.sidebarButtons' => json_encode(array_map(
+        fn ($index) => ['label' => 'Sidebar regression '.$index, 'url' => '/account/api'],
+        range(1, 20),
+    ))]);
+}
+
+if (in_array($argv[2] ?? null, ['admin', 'classic', 'compact', 'accent'], true)) {
     Auth::login(User::factory()->create(['root_admin' => true]));
+}
+
+if (($argv[2] ?? null) === 'maintenance') {
+    config(['designify.isUnderMaintenance' => true]);
+    Auth::login(User::factory()->create(['root_admin' => false]));
 }
 
 $response = $app->make(Kernel::class)->handle(Request::create('http://panel.test'.($argv[1] ?? '/auth/login')));

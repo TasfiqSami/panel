@@ -5,8 +5,7 @@ import loadDirectory from '@/api/server/files/loadDirectory';
 import getFileDownloadUrl from '@/api/server/files/getFileDownloadUrl';
 import { isImageFile } from '@/api/server/files/isImageFile';
 import { isVideoFile } from '@/api/server/files/isVideoFile';
-import ImageViewerModal from './ImageViewerModal';
-import VideoViewerModal from './VideoViewerModal';
+import { ImageViewerModal, VideoViewerModal } from './mediaViewers';
 import FileManagerBreadcrumbs from './FileManagerBreadcrumbs';
 import { FileActionCheckbox } from './SelectFileCheckbox';
 import Tooltip from '@/reviactyl/elements/tooltip/Tooltip';
@@ -27,11 +26,12 @@ import DeleteFilesDialog from './DeleteFilesDialog';
 import { bytesToString } from '@/lib/formatters';
 import { FaTrashCan, FaArrowRotateLeft } from 'react-icons/fa6';
 import type { FileObject } from '@/api/server/files/loadDirectory';
+import FileSortIcon from './FileSortIcon';
 import styles from './style.module.css';
 import DropdownMenu from '@/reviactyl/elements/DropdownMenu';
 import Input from '@/reviactyl/elements/Input';
 import { formatDistanceToNow } from 'date-fns';
-import { FaEllipsis, FaFolder, FaFileLines, FaArrowDownAZ } from 'react-icons/fa6';
+import { FaEllipsis, FaFolder, FaFileLines } from 'react-icons/fa6';
 
 type Entry = {
     id: string;
@@ -275,7 +275,7 @@ export default function RecycleBin() {
     const { hash } = useLocation();
     const path = hashToPath(hash);
     const nested = path !== '/.recycle-bin';
-    const [media, setMedia] = useState<{ url: string; name: string; video: boolean } | null>(null);
+    const [media, setMedia] = useState<{ url: string; name: string; video: boolean; mimetype: string } | null>(null);
     const {
         data: children,
         error: browseError,
@@ -336,6 +336,7 @@ export default function RecycleBin() {
                     url: await getFileDownloadUrl(uuid, actual),
                     name: entry.original_path.split('/').pop()!,
                     video: isVideoFile(file),
+                    mimetype: file.mimetype,
                 });
             } else if (file.isEditable()) navigate(`/server/${id}/files/edit#${encodePathSegments(target)}`);
             else await download(entry);
@@ -369,6 +370,10 @@ export default function RecycleBin() {
     const refresh = async () => {
         await mutate().catch(() => undefined);
         if (nested) await refreshChildren().catch(() => undefined);
+    };
+    const retry = async () => {
+        if (error) await mutate().catch(() => undefined);
+        if (nested && browseError) await refreshChildren().catch(() => undefined);
     };
 
     const prepareRestore = async (entries: Entry[]) => {
@@ -500,13 +505,21 @@ export default function RecycleBin() {
                     >
                         {t('server/files:name')}{' '}
                         {sort === 'name' && (
-                            <FaArrowDownAZ className={`inline ms-1 ${descending ? '' : 'rotate-180'}`} />
+                            <FileSortIcon
+                                column='name'
+                                direction={descending ? 'desc' : 'asc'}
+                                className='inline ms-1'
+                            />
                         )}
                     </button>
                     <button type='button' onClick={() => sortBy('size')} className='cursor-pointer w-1/6 text-end'>
                         {t('server/files:size')}{' '}
                         {sort === 'size' && (
-                            <FaArrowDownAZ className={`inline ms-1 ${descending ? '' : 'rotate-180'}`} />
+                            <FileSortIcon
+                                column='size'
+                                direction={descending ? 'desc' : 'asc'}
+                                className='inline ms-1'
+                            />
                         )}
                     </button>
                     <button
@@ -516,7 +529,11 @@ export default function RecycleBin() {
                     >
                         {t('server/files:date')}{' '}
                         {sort === 'date' && (
-                            <FaArrowDownAZ className={`inline ms-1 ${descending ? '' : 'rotate-180'}`} />
+                            <FileSortIcon
+                                column='date'
+                                direction={descending ? 'desc' : 'asc'}
+                                className='inline ms-1'
+                            />
                         )}
                     </button>
                 </div>
@@ -527,9 +544,7 @@ export default function RecycleBin() {
                         {failure || httpErrorToHuman(error || browseError)}
                     </p>
                 )}
-                {(error || browseError) && (
-                    <Button onClick={() => (nested ? refreshChildren() : mutate())}>{t('retry')}</Button>
-                )}
+                {(error || browseError) && <Button onClick={retry}>{t('retry')}</Button>}
                 {((nested && !children && !browseError) || (!nested && !data && !error)) && <Spinner centered />}
                 {(nested ? children : data) && visible.length === 0 && (
                     <p className='py-8 text-center text-gray-300'>
@@ -560,6 +575,7 @@ export default function RecycleBin() {
                         onDismissed={() => setMedia(null)}
                         videoUrl={media.url}
                         videoName={media.name}
+                        videoMimeType={media.mimetype}
                     />
                 ) : (
                     <ImageViewerModal
